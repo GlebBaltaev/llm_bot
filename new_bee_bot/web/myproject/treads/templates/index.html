@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Фильтр диалогов</title>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .filter-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-bottom: 10px;
+        }
+
+        .dialog-button {
+            height: 38px;
+            padding: 5px 15px;
+            font-size: 14px;
+        }
+
+        .content-container {
+            display: flex;
+            flex-grow: 1;
+            gap: 20px;
+            overflow: hidden;
+        }
+
+        .threads, .messages {
+            flex: 1;
+            border: 1px solid #ccc;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .threads h3, .messages h3 {
+            margin: 0 0 10px 0;
+        }
+
+        .threads-list, #messages-content {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .thread-box {
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            cursor: pointer;
+            background-color: #f9f9f9;
+        }
+
+        .thread-box:hover {
+            background-color: #e6e6e6;
+        }
+
+        .selected {
+            background-color: #d1e7fd !important;
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    
+    <!-- Фильтр -->
+    <div class="filter-section">
+        <form method="GET" action="{% url 'dialogs' %}">
+            <label for="start_date">С:</label>
+            <input type="date" id="start_date" name="start_date" value="{{ request.GET.start_date }}">
+            <label for="end_date">По:</label>
+            <input type="date" id="end_date" name="end_date" value="{{ request.GET.end_date }}">
+            <label for="id_tread">ID треда:</label>
+            <input type="text" id="id_tread" name="id_tread" value="{{ request.GET.id_tread|default_if_none:'' }}" placeholder="Оставьте пустым для всех тредов">
+            <button type="button" onclick="clearThreadId()">✖</button>
+            <button type="submit">Фильтровать</button>
+        </form>
+        <button class="dialog-button" onclick="saveDialog()">Сохранить</button>
+        <button class="dialog-button" onclick="deleteDialog()">Удалить</button>
+    </div>
+
+    <!-- Контейнер с тредами и сообщениями -->
+    <div class="content-container">
+        <div class="threads">
+            <h3>Треды:</h3>
+            <div class="threads-list">
+                {% if threads %}
+                    {% for thread in threads %}
+                        <div class="thread-box" onclick="selectThread('{{ thread.id_tread }}')">
+                            {{ thread.id_tread }} ({{ thread.message_count }} сообщений)
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p>Нет данных</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="messages">
+            <h3>Сообщения:</h3>
+            <div id="messages-content">Выберите тред...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let selectedThread = null;
+    let messagesData = [];
+
+    function selectThread(id) {
+        const messagesBox = document.getElementById("messages-content");
+        messagesBox.innerHTML = "<p>Загрузка...</p>";
+        selectedThread = id;
+
+        document.querySelectorAll('.thread-box').forEach(el => el.classList.remove('selected'));
+        event.target.classList.add('selected');
+
+        fetch(`/get_messages/?id_tread=${selectedThread}&start_date=${document.getElementById("start_date").value}&end_date=${document.getElementById("end_date").value}`)
+            .then(response => response.json())
+            .then(data => {
+                let messagesBox = document.getElementById("messages-content");
+                messagesBox.innerText = "";
+                messagesData = data.messages;
+                messagesData.forEach(msg => {
+                    let messageElement = document.createElement("p");
+                    messageElement.innerHTML = `<strong>${msg.role}:</strong> ${msg.text}`;
+                    messagesBox.appendChild(messageElement);
+                });
+            })
+            .catch(error => console.error("Ошибка загрузки сообщений:", error));
+    }
+
+    function saveDialog() {
+        if (!selectedThread || messagesData.length === 0) {
+            alert("Выберите тред с сообщениями!");
+            return;
+        }
+
+        let content = messagesData.map(msg => {
+            let role = msg.role === "user" ? "U" : "A";
+            return `${role}: ${msg.text}`;
+        }).join("\n");
+
+        let blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+        let link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${selectedThread}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+    function getCSRFToken() {
+        return document.cookie.split('; ')
+            .find(row => row.startsWith('csrftoken='))
+            ?.split('=')[1];
+    }
+
+    function deleteDialog() {
+        if (!selectedThread) {
+            alert("Выберите тред для удаления!");
+            return;
+        }
+
+        if (confirm("Вы уверены, что хотите удалить этот тред?")) {
+            fetch(`/delete_thread/?id_tread=${selectedThread}`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCSRFToken()
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert("Ошибка удаления: " + data.error);
+                    }
+                })
+                .catch(error => console.error("Ошибка удаления треда:", error));
+        }
+    }
+    function clearThreadId() {
+        document.getElementById("id_tread").value = "";
+    }
+</script>
+
+</body>
+</html>

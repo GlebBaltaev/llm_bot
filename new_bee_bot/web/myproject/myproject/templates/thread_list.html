@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Thread Filter</title>
+    <script>
+        function fetchThreads() {
+            let id_tread = document.getElementById("id_tread").value;
+            let start_date = document.getElementById("start_date").value;
+            let end_date = document.getElementById("end_date").value;
+            
+            let params = new URLSearchParams({id_tread, start_date, end_date});
+            fetch("?" + params, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                .then(response => response.json())
+                .then(data => {
+                    let list = document.getElementById("thread_list");
+                    list.innerHTML = "";
+                    data.threads.forEach(id => {
+                        let item = document.createElement("li");
+                        item.textContent = id;
+                        list.appendChild(item);
+                    });
+                });
+        }
+    </script>
+</head>
+<body>
+    <label>ID Tread: <input type="text" id="id_tread"></label>
+    <label>Start Date: <input type="date" id="start_date"></label>
+    <label>End Date: <input type="date" id="end_date"></label>
+    <button onclick="fetchThreads()">Filter</button>
+    <ul id="thread_list">
+        {% for thread in threads %}
+            <li>{{ thread }}</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
